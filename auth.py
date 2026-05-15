@@ -531,3 +531,55 @@ def wechat_login(
                 page.quit()
             except Exception:
                 pass
+
+
+def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
+    """打开浏览器、进入登录页、点击微信登录、截图二维码。
+    返回 (ChromiumPage, qrcode_path)。调用者负责发送二维码给用户后调用 complete_login。
+    失败返回 (None, None)。
+    """
+    try:
+        co = ChromiumOptions()
+        co.headless(headless)
+        co.set_argument("--no-sandbox")
+        co.set_argument("--disable-gpu")
+        co.set_argument("--disable-dev-shm-usage")
+
+        page = ChromiumPage(addr_or_opts=co)
+        page.get(config.LOGIN_URL)
+        time.sleep(2)
+
+        _fill_credentials(page)
+
+        if not _click_wechat_login(page):
+            try:
+                page.quit()
+            except Exception:
+                pass
+            return None, None
+
+        time.sleep(2)
+
+        os.makedirs(data_dir, exist_ok=True)
+        qrcode_path = os.path.join(data_dir, "qrcode.png")
+        _capture_qrcode(page, qrcode_path)
+        _show_qrcode(qrcode_path)
+
+        return page, qrcode_path
+    except Exception:
+        return None, None
+
+
+def complete_login(page, cookie_path: str, timeout: int = 120):
+    """等待用户扫码，收集 Cookie 并保存。返回 requests.Session 或 None。"""
+    try:
+        session = _wait_for_login(page, cookie_path, "", "", timeout)
+        if session is not None:
+            save_cookie(session, cookie_path)
+        return session
+    finally:
+        try:
+            if page is not None:
+                page.quit()
+        except Exception:
+            pass

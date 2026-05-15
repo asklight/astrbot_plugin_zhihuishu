@@ -1,20 +1,9 @@
 {
-  "zhs_username": {
-    "description": "智慧树账号（可选，用于自动填充登录页）",
-    "type": "string",
-    "default": "",
-    "hint": "如果配置了账号密码，登录时会自动填充"
-  },
-  "zhs_password": {
-    "description": "智慧树密码（可选）",
-    "type": "string",
-    "default": ""
-  },
   "headless": {
-    "description": "浏览器是否使用无头模式",
+    "description": "浏览器无头模式",
     "type": "bool",
     "default": true,
-    "hint": "服务器部署建议 true，本地调试可设 false 以便扫码"
+    "hint": "服务器部署建议 true，本地调试可设 false 以便看到浏览器窗口"
   },
   "qrcode_timeout": {
     "description": "微信扫码超时时间（秒）",

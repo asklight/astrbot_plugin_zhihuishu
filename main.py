@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import requests
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 
 import auth
@@ -79,8 +80,6 @@ class ZhihuishuPlugin(Star):
 
         # 方式4: 默认配置
         default_cfg = {
-            "zhs_username": "",
-            "zhs_password": "",
             "headless": True,
             "cookie_file": "cookie.json",
             "cache_file": "homework_cache.json",
@@ -331,6 +330,7 @@ class ZhihuishuPlugin(Star):
     async def zhihuishu(self, event: AstrMessageEvent):
         """智慧树作业提醒主指令。
         /zhihuishu              - 立即检查并返回作业列表
+        /zhihuishu login        - 微信扫码登录，保存 Cookie
         /zhihuishu set <HH:MM>  - 设置每天定时推送时间
         /zhihuishu cancel       - 取消定时推送
         /zhihuishu status       - 查看当前状态
@@ -396,13 +396,51 @@ class ZhihuishuPlugin(Star):
 
             yield event.plain_result("\n".join(status_lines))
 
+        elif subcmd == "login":
+            yield event.plain_result("🔑 正在打开智慧树登录页面，请稍候...")
+
+            loop = asyncio.get_event_loop()
+
+            page, qrcode_path = await loop.run_in_executor(
+                None,
+                auth.prepare_qrcode,
+                config.HEADLESS,
+                self.data_dir,
+            )
+
+            if page is None:
+                yield event.plain_result("❌ 无法打开登录页面，请检查服务器是否安装了 Chrome/Chromium 浏览器。")
+                return
+
+            try:
+                yield event.chain_result([
+                    Image(file=qrcode_path),
+                    Plain(f"请使用微信扫描二维码登录（{config.QRCODE_TIMEOUT_SECONDS} 秒内）"),
+                ])
+            except Exception:
+                yield event.plain_result(
+                    f"请使用微信扫描二维码登录（{config.QRCODE_TIMEOUT_SECONDS} 秒内）。\n"
+                    f"二维码已保存到：{qrcode_path}"
+                )
+
+            session = await loop.run_in_executor(
+                None,
+                auth.complete_login,
+                page,
+                config.COOKIE_FILE,
+                config.QRCODE_TIMEOUT_SECONDS,
+            )
+
+            if session:
+                yield event.plain_result("✅ 登录成功！Cookie 已保存，现在可以 /zhihuishu 检查作业了。")
+            else:
+                yield event.plain_result("❌ 登录超时或失败，请重新 /zhihuishu login")
+
         elif subcmd == "config":
             cfg_path = os.path.join(self.data_dir, "plugin_config.json")
             if len(parts) == 2:
                 # 显示当前配置
                 lines = ["⚙️ 插件配置（编辑路径见下方）", ""]
-                lines.append(f"zhs_username: {config.ZHS_USERNAME or '(空)'}")
-                lines.append(f"zhs_password: {'*' * len(config.ZHS_PASSWORD) if config.ZHS_PASSWORD else '(空)'}")
                 lines.append(f"headless: {config.HEADLESS}")
                 lines.append(f"cookie_file: {config.COOKIE_FILE}")
                 lines.append(f"cache_file: {config.CACHE_FILE}")
@@ -410,7 +448,7 @@ class ZhihuishuPlugin(Star):
                 lines.append("")
                 lines.append(f"配置文件：{cfg_path}")
                 lines.append("用法：/zhihuishu config <key> <value>")
-                lines.append("可修改的 key：headless, zhs_username, zhs_password, qrcode_timeout")
+                lines.append("可修改的 key：headless, qrcode_timeout")
                 yield event.plain_result("\n".join(lines))
                 return
 
@@ -443,6 +481,7 @@ class ZhihuishuPlugin(Star):
             yield event.plain_result(
                 "未知子命令。\n用法：\n"
                 "  /zhihuishu              立即检查作业\n"
+                "  /zhihuishu login        微信扫码登录\n"
                 "  /zhihuishu set <HH:MM>  设置每天推送时间\n"
                 "  /zhihuishu cancel       取消定时推送\n"
                 "  /zhihuishu status       查看状态\n"

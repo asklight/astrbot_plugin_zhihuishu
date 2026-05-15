@@ -35,10 +35,8 @@ DEFAULT_HEADERS = {
 
 def update_config(plugin_config: dict, data_dir: str = "") -> None:
     """从 AstrBot 配置更新本模块配置。"""
-    global ZHS_USERNAME, ZHS_PASSWORD, HEADLESS, COOKIE_FILE, CACHE_FILE, QRCODE_TIMEOUT_SECONDS, DATA_DIR
+    global HEADLESS, COOKIE_FILE, CACHE_FILE, QRCODE_TIMEOUT_SECONDS, DATA_DIR
 
-    ZHS_USERNAME = plugin_config.get("zhs_username", ZHS_USERNAME)
-    ZHS_PASSWORD = plugin_config.get("zhs_password", ZHS_PASSWORD)
     HEADLESS = plugin_config.get("headless", HEADLESS)
     QRCODE_TIMEOUT_SECONDS = plugin_config.get("qrcode_timeout", QRCODE_TIMEOUT_SECONDS)
 
