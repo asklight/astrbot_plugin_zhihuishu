@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import requests
-from astrbot.api import logger
+from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
@@ -24,8 +24,9 @@ import crawler
 
 @register("astrbot_plugin_zhihuishu", "asklight", "智慧树作业提醒", "1.0.0")
 class ZhihuishuPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
+        self.config = config
         self._schedule_task: asyncio.Task | None = None
         self._schedule_data: dict = {}
         self.data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -51,8 +52,12 @@ class ZhihuishuPlugin(Star):
         logger.info("[智慧树] 插件已停止")
 
     def _get_plugin_config(self) -> dict:
-        """尝试多种方式读取插件配置，文件不存在时创建默认配置。"""
-        # 方式1: AstrBot 配置系统
+        """读取插件配置。优先 AstrBotConfig，其次 context.config，最后本地 JSON。"""
+        # 方式1: AstrBotConfig（AstrBot v4 原生，管理面板写入）
+        if self.config is not None and len(self.config) > 0:
+            return dict(self.config)
+
+        # 方式2: context.config（旧版兼容）
         try:
             if hasattr(self.context, "config"):
                 cfg = self.context.config
@@ -63,7 +68,7 @@ class ZhihuishuPlugin(Star):
         except Exception:
             pass
 
-        # 方式2: 插件数据目录的 JSON 文件
+        # 方式3: 本地 JSON 文件
         config_path = os.path.join(self.data_dir, "plugin_config.json")
         try:
             if os.path.exists(config_path):
@@ -72,7 +77,7 @@ class ZhihuishuPlugin(Star):
         except Exception:
             pass
 
-        # 方式3: 创建默认配置
+        # 方式4: 默认配置
         default_cfg = {
             "zhs_username": "",
             "zhs_password": "",
@@ -89,7 +94,16 @@ class ZhihuishuPlugin(Star):
         return default_cfg
 
     def _save_plugin_config(self, cfg: dict):
-        """保存插件配置到 JSON 文件。"""
+        """保存插件配置。优先使用 AstrBotConfig，回退到本地 JSON。"""
+        if self.config is not None:
+            for k, v in cfg.items():
+                self.config[k] = v
+            try:
+                self.config.save_config()
+                return
+            except Exception as e:
+                logger.error(f"[智慧树] AstrBotConfig.save_config() 失败，回退到 JSON: {e}")
+
         config_path = os.path.join(self.data_dir, "plugin_config.json")
         try:
             with open(config_path, "w", encoding="utf-8") as f:
