@@ -533,10 +533,10 @@ def wechat_login(
                 pass
 
 
-def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
+def prepare_qrcode(headless: bool = True, data_dir: str = "data", browser_path: str = ""):
     """打开浏览器、进入登录页、点击微信登录、截图二维码。
     返回 (ChromiumPage, qrcode_path)。调用者负责发送二维码给用户后调用 complete_login。
-    失败返回 (None, None)。
+    失败返回 (None, error_msg)。
     """
     try:
         co = ChromiumOptions()
@@ -544,6 +544,8 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
         co.set_argument("--no-sandbox")
         co.set_argument("--disable-gpu")
         co.set_argument("--disable-dev-shm-usage")
+        if browser_path:
+            co.set_browser_path(browser_path)
 
         page = ChromiumPage(addr_or_opts=co)
         page.get(config.LOGIN_URL)
@@ -556,7 +558,7 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
                 page.quit()
             except Exception:
                 pass
-            return None, None
+            return None, "未找到微信登录入口，登录页面结构可能已变更。"
 
         time.sleep(2)
 
@@ -566,8 +568,17 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
         _show_qrcode(qrcode_path)
 
         return page, qrcode_path
-    except Exception:
-        return None, None
+    except Exception as e:
+        msg = str(e)
+        if "chrome" in msg.lower() or "browser" in msg.lower() or "chromium" in msg.lower():
+            msg = (
+                f"未找到 Chrome/Chromium 浏览器。请安装：\n"
+                f"  Ubuntu/Debian: sudo apt install chromium-browser\n"
+                f"  CentOS/RHEL:   sudo yum install chromium\n"
+                f"或在插件配置中设置 browser_path 指向浏览器路径。\n"
+                f"原始错误: {msg}"
+            )
+        return None, msg
 
 
 def complete_login(page, cookie_path: str, timeout: int = 120):

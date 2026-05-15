@@ -6,6 +6,7 @@ import os
 ZHS_USERNAME = ""
 ZHS_PASSWORD = ""
 HEADLESS = True
+BROWSER_PATH = ""  # Chrome/Chromium 浏览器路径，空字符串为自动检测
 COOKIE_FILE = "data/cookie.json"
 CACHE_FILE = "data/homework_cache.json"
 QRCODE_TIMEOUT_SECONDS = 120
@@ -35,9 +36,10 @@ DEFAULT_HEADERS = {
 
 def update_config(plugin_config: dict, data_dir: str = "") -> None:
     """从 AstrBot 配置更新本模块配置。"""
-    global HEADLESS, COOKIE_FILE, CACHE_FILE, QRCODE_TIMEOUT_SECONDS, DATA_DIR
+    global HEADLESS, BROWSER_PATH, COOKIE_FILE, CACHE_FILE, QRCODE_TIMEOUT_SECONDS, DATA_DIR
 
     HEADLESS = plugin_config.get("headless", HEADLESS)
+    BROWSER_PATH = plugin_config.get("browser_path", BROWSER_PATH)
     QRCODE_TIMEOUT_SECONDS = plugin_config.get("qrcode_timeout", QRCODE_TIMEOUT_SECONDS)
 
     if data_dir:

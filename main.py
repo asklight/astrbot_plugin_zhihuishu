@@ -94,6 +94,7 @@ class ZhihuishuPlugin(Star):
         # 方式4: 默认配置
         default_cfg = {
             "headless": True,
+            "browser_path": "",
             "cookie_file": "cookie.json",
             "cache_file": "homework_cache.json",
             "qrcode_timeout": 120,
@@ -414,16 +415,20 @@ class ZhihuishuPlugin(Star):
 
             loop = asyncio.get_event_loop()
 
-            page, qrcode_path = await loop.run_in_executor(
+            page, qrcode_or_error = await loop.run_in_executor(
                 None,
                 auth.prepare_qrcode,
                 config.HEADLESS,
                 self.data_dir,
+                config.BROWSER_PATH,
             )
 
             if page is None:
-                yield event.plain_result("❌ 无法打开登录页面，请检查服务器是否安装了 Chrome/Chromium 浏览器。")
+                error_msg = qrcode_or_error or "未知错误"
+                yield event.plain_result(f"❌ {error_msg}")
                 return
+
+            qrcode_path = qrcode_or_error
 
             try:
                 yield event.chain_result([
@@ -455,13 +460,14 @@ class ZhihuishuPlugin(Star):
                 # 显示当前配置
                 lines = ["⚙️ 插件配置（编辑路径见下方）", ""]
                 lines.append(f"headless: {config.HEADLESS}")
+                lines.append(f"browser_path: {config.BROWSER_PATH or '(自动检测)'}")
+                lines.append(f"qrcode_timeout: {config.QRCODE_TIMEOUT_SECONDS}")
                 lines.append(f"cookie_file: {config.COOKIE_FILE}")
                 lines.append(f"cache_file: {config.CACHE_FILE}")
-                lines.append(f"qrcode_timeout: {config.QRCODE_TIMEOUT_SECONDS}")
                 lines.append("")
                 lines.append(f"配置文件：{cfg_path}")
                 lines.append("用法：/zhihuishu config <key> <value>")
-                lines.append("可修改的 key：headless, qrcode_timeout")
+                lines.append("可修改的 key：headless, qrcode_timeout, browser_path")
                 yield event.plain_result("\n".join(lines))
                 return
 

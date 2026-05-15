@@ -10,5 +10,11 @@
     "type": "int",
     "default": 120,
     "hint": "微信二维码有效期约 2-3 分钟"
+  },
+  "browser_path": {
+    "description": "Chrome/Chromium 浏览器路径",
+    "type": "string",
+    "default": "",
+    "hint": "留空自动检测。Linux 可填 /usr/bin/chromium-browser 或 /usr/bin/google-chrome"
   }
 }
