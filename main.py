@@ -51,24 +51,51 @@ class ZhihuishuPlugin(Star):
         logger.info("[智慧树] 插件已停止")
 
     def _get_plugin_config(self) -> dict:
-        """尝试多种方式读取插件配置。"""
+        """尝试多种方式读取插件配置，文件不存在时创建默认配置。"""
+        # 方式1: AstrBot 配置系统
         try:
             if hasattr(self.context, "config"):
                 cfg = self.context.config
                 if isinstance(cfg, dict):
-                    return cfg.get("astrbot_plugin_zhihuishu", {})
+                    plugin_cfg = cfg.get("astrbot_plugin_zhihuishu", {})
+                    if plugin_cfg:
+                        return plugin_cfg
         except Exception:
             pass
 
+        # 方式2: 插件数据目录的 JSON 文件
+        config_path = os.path.join(self.data_dir, "plugin_config.json")
         try:
-            config_path = os.path.join(self.data_dir, "plugin_config.json")
             if os.path.exists(config_path):
                 with open(config_path, "r", encoding="utf-8") as f:
                     return json.load(f)
         except Exception:
             pass
 
-        return {}
+        # 方式3: 创建默认配置
+        default_cfg = {
+            "zhs_username": "",
+            "zhs_password": "",
+            "headless": True,
+            "cookie_file": "cookie.json",
+            "cache_file": "homework_cache.json",
+            "qrcode_timeout": 120,
+        }
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(default_cfg, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return default_cfg
+
+    def _save_plugin_config(self, cfg: dict):
+        """保存插件配置到 JSON 文件。"""
+        config_path = os.path.join(self.data_dir, "plugin_config.json")
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"[智慧树] 保存配置失败: {e}")
 
     def _schedule_path(self) -> str:
         return os.path.join(self.data_dir, "push_schedule.json")
@@ -355,11 +382,55 @@ class ZhihuishuPlugin(Star):
 
             yield event.plain_result("\n".join(status_lines))
 
+        elif subcmd == "config":
+            cfg_path = os.path.join(self.data_dir, "plugin_config.json")
+            if len(parts) == 2:
+                # 显示当前配置
+                lines = ["⚙️ 插件配置（编辑路径见下方）", ""]
+                lines.append(f"zhs_username: {config.ZHS_USERNAME or '(空)'}")
+                lines.append(f"zhs_password: {'*' * len(config.ZHS_PASSWORD) if config.ZHS_PASSWORD else '(空)'}")
+                lines.append(f"headless: {config.HEADLESS}")
+                lines.append(f"cookie_file: {config.COOKIE_FILE}")
+                lines.append(f"cache_file: {config.CACHE_FILE}")
+                lines.append(f"qrcode_timeout: {config.QRCODE_TIMEOUT_SECONDS}")
+                lines.append("")
+                lines.append(f"配置文件：{cfg_path}")
+                lines.append("用法：/zhihuishu config <key> <value>")
+                lines.append("可修改的 key：headless, zhs_username, zhs_password, qrcode_timeout, cookie_file, cache_file")
+                yield event.plain_result("\n".join(lines))
+                return
+
+            if len(parts) < 4:
+                yield event.plain_result("用法：/zhihuishu config <key> <value>")
+                return
+
+            key = parts[2]
+            value = " ".join(parts[3:])
+
+            # 读取当前配置
+            cfg = self._get_plugin_config()
+
+            if key == "headless":
+                cfg[key] = value.lower() in ("true", "1", "yes", "on")
+            elif key == "qrcode_timeout":
+                try:
+                    cfg[key] = int(value)
+                except ValueError:
+                    yield event.plain_result("qrcode_timeout 必须是整数")
+                    return
+            else:
+                cfg[key] = value
+
+            self._save_plugin_config(cfg)
+            config.update_config(cfg, self.data_dir)
+            yield event.plain_result(f"✅ 配置已更新：{key} = {cfg[key]}")
+
         else:
             yield event.plain_result(
                 "未知子命令。\n用法：\n"
                 "  /zhihuishu              立即检查作业\n"
                 "  /zhihuishu set <HH:MM>  设置每天推送时间\n"
                 "  /zhihuishu cancel       取消定时推送\n"
-                "  /zhihuishu status       查看状态"
+                "  /zhihuishu status       查看状态\n"
+                "  /zhihuishu config       查看/修改插件配置"
             )

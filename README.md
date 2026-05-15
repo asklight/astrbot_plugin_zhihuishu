@@ -62,7 +62,30 @@ cp /path/to/zhihuishu-notifier/data/homework_cache.json \
 
 ## 配置
 
-在 AstrBot 管理面板的插件配置中可调整：
+插件首次加载时会自动在数据目录创建 `plugin_config.json`（路径：`data/plugins/astrbot_plugin_zhihuishu/data/plugin_config.json`），你可以：
+
+### 方式一：通过指令修改（推荐）
+
+```
+/zhihuishu config                  # 查看当前配置
+/zhihuishu config headless false   # 关闭无头模式
+/zhihuishu config qrcode_timeout 150
+```
+
+### 方式二：直接编辑配置文件
+
+手动编辑 `data/plugin_config.json`：
+
+```json
+{
+  "zhs_username": "",
+  "zhs_password": "",
+  "headless": true,
+  "cookie_file": "cookie.json",
+  "cache_file": "homework_cache.json",
+  "qrcode_timeout": 120
+}
+```
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -78,10 +101,12 @@ cp /path/to/zhihuishu-notifier/data/homework_cache.json \
 ## 指令
 
 ```
-/zhihuishu              # 立即检查并返回作业列表
-/zhihuishu set <HH:MM>  # 设置每天定时推送时间，如 /zhihuishu set 08:00
-/zhihuishu cancel       # 取消定时推送
-/zhihuishu status       # 查看登录状态和定时设置
+/zhihuishu                   # 立即检查并返回作业列表
+/zhihuishu set <HH:MM>       # 设置每天定时推送时间，如 /zhihuishu set 08:00
+/zhihuishu cancel            # 取消定时推送
+/zhihuishu status            # 查看登录状态和定时设置
+/zhihuishu config            # 查看当前插件配置
+/zhihuishu config <key> <val> # 修改配置，如 /zhihuishu config headless false
 ```
 
 **定时推送说明**：设置推送时间时，插件会自动记录当前会话来源（群/私聊），到点后向同一位置推送。
