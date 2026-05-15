@@ -16,18 +16,6 @@
     "default": true,
     "hint": "服务器部署建议 true，本地调试可设 false 以便扫码"
   },
-  "cookie_file": {
-    "description": "Cookie 文件相对路径",
-    "type": "string",
-    "default": "cookie.json",
-    "hint": "相对于插件数据目录的路径"
-  },
-  "cache_file": {
-    "description": "作业缓存文件相对路径",
-    "type": "string",
-    "default": "homework_cache.json",
-    "hint": "相对于插件数据目录的路径"
-  },
   "qrcode_timeout": {
     "description": "微信扫码超时时间（秒）",
     "type": "int",

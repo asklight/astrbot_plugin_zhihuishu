@@ -410,7 +410,7 @@ class ZhihuishuPlugin(Star):
                 lines.append("")
                 lines.append(f"配置文件：{cfg_path}")
                 lines.append("用法：/zhihuishu config <key> <value>")
-                lines.append("可修改的 key：headless, zhs_username, zhs_password, qrcode_timeout, cookie_file, cache_file")
+                lines.append("可修改的 key：headless, zhs_username, zhs_password, qrcode_timeout")
                 yield event.plain_result("\n".join(lines))
                 return
 
