@@ -570,11 +570,14 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data", browser_path: 
         return page, qrcode_path
     except Exception as e:
         msg = str(e)
-        if "chrome" in msg.lower() or "browser" in msg.lower() or "chromium" in msg.lower():
+        # DrissionPage 中英文错误都可能出现，统一给出安装指引
+        browser_keywords = ["chrome", "chromium", "browser", "浏览器", "可执行文件", "executable"]
+        if any(kw in msg.lower() for kw in browser_keywords):
             msg = (
-                f"未找到 Chrome/Chromium 浏览器。请安装：\n"
+                f"未找到 Chrome/Chromium 浏览器。\n"
                 f"  Ubuntu/Debian: sudo apt install chromium-browser\n"
                 f"  CentOS/RHEL:   sudo yum install chromium\n"
+                f"  Windows:       安装 Chrome 或设置 browser_path\n"
                 f"或在插件配置中设置 browser_path 指向浏览器路径。\n"
                 f"原始错误: {msg}"
             )
