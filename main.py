@@ -8,8 +8,21 @@ import os
 import re
 from datetime import datetime
 
+import importlib.util
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _PLUGIN_DIR)
+
+
+def _import_plugin_module(name: str):
+    """从插件目录显式导入模块，避免与 zhihuishu-notifier 子目录冲突。"""
+    path = os.path.join(_PLUGIN_DIR, f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"zhihuishu_{name}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 import requests
 from astrbot.api import AstrBotConfig, logger
@@ -17,10 +30,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 
-import auth
-import cache as cache_module
-import config
-import crawler
+auth = _import_plugin_module("auth")
+cache_module = _import_plugin_module("cache")
+config = _import_plugin_module("config")
+crawler = _import_plugin_module("crawler")
 
 
 @register("astrbot_plugin_zhihuishu", "asklight", "智慧树作业提醒", "1.0.0")
