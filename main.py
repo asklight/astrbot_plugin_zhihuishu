@@ -8,6 +8,9 @@ import os
 import re
 from datetime import datetime
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import requests
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
