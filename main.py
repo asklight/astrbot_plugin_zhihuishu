@@ -94,7 +94,6 @@ class ZhihuishuPlugin(Star):
         # 方式4: 默认配置
         default_cfg = {
             "headless": True,
-            "browser_path": "",
             "cookie_file": "cookie.json",
             "cache_file": "homework_cache.json",
             "qrcode_timeout": 120,
@@ -415,15 +414,14 @@ class ZhihuishuPlugin(Star):
 
             loop = asyncio.get_event_loop()
 
-            page, qrcode_or_error = await loop.run_in_executor(
+            pw_objs, qrcode_or_error = await loop.run_in_executor(
                 None,
                 auth.prepare_qrcode,
                 config.HEADLESS,
                 self.data_dir,
-                config.BROWSER_PATH,
             )
 
-            if page is None:
+            if pw_objs is None:
                 error_msg = qrcode_or_error or "未知错误"
                 yield event.plain_result(f"❌ {error_msg}")
                 return
@@ -444,7 +442,7 @@ class ZhihuishuPlugin(Star):
             session = await loop.run_in_executor(
                 None,
                 auth.complete_login,
-                page,
+                pw_objs,
                 config.COOKIE_FILE,
                 config.QRCODE_TIMEOUT_SECONDS,
             )
@@ -460,14 +458,13 @@ class ZhihuishuPlugin(Star):
                 # 显示当前配置
                 lines = ["⚙️ 插件配置（编辑路径见下方）", ""]
                 lines.append(f"headless: {config.HEADLESS}")
-                lines.append(f"browser_path: {config.BROWSER_PATH or '(自动检测)'}")
                 lines.append(f"qrcode_timeout: {config.QRCODE_TIMEOUT_SECONDS}")
                 lines.append(f"cookie_file: {config.COOKIE_FILE}")
                 lines.append(f"cache_file: {config.CACHE_FILE}")
                 lines.append("")
                 lines.append(f"配置文件：{cfg_path}")
                 lines.append("用法：/zhihuishu config <key> <value>")
-                lines.append("可修改的 key：headless, qrcode_timeout, browser_path")
+                lines.append("可修改的 key：headless, qrcode_timeout")
                 yield event.plain_result("\n".join(lines))
                 return
 
