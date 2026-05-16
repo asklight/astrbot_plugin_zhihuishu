@@ -1,14 +1,8 @@
 {
-  "headless": {
-    "description": "浏览器无头模式",
-    "type": "bool",
-    "default": true,
-    "hint": "服务器部署建议 true，本地调试可设 false 以便看到浏览器窗口"
-  },
-  "qrcode_timeout": {
-    "description": "微信扫码超时时间（秒）",
-    "type": "int",
-    "default": 120,
-    "hint": "微信二维码有效期约 2-3 分钟"
+  "cookie": {
+    "description": "Cookie JSON（{name: value} 格式）",
+    "type": "text",
+    "default": "",
+    "hint": "浏览器 F12 → Application → Cookies → 智慧树站点 → 导出为 JSON 粘贴到这里。保存后重启插件或执行 /zhihuishu cookie 生效。"
   }
 }

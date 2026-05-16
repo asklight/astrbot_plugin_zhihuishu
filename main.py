@@ -27,7 +27,6 @@ def _import_plugin_module(name: str):
 import requests
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.message_components import Image, Plain
 from astrbot.api.star import Context, Star, register
 
 auth = _import_plugin_module("auth")
@@ -47,9 +46,17 @@ class ZhihuishuPlugin(Star):
         os.makedirs(self.data_dir, exist_ok=True)
 
     async def initialize(self):
-        """插件初始化：读取配置、加载定时设置、启动后台任务。"""
+        """插件初始化：读取配置、同步 Cookie、加载定时设置、启动后台任务。"""
         plugin_config = self._get_plugin_config()
         config.update_config(plugin_config, self.data_dir)
+
+        # 从管理面板配置同步 Cookie 到 data/cookie.json
+        cookie_value = plugin_config.get("cookie", "")
+        if cookie_value:
+            if auth.save_cookie_from_config(cookie_value, config.COOKIE_FILE):
+                logger.info("[智慧树] Cookie 已从配置同步到文件")
+            else:
+                logger.error("[智慧树] Cookie 配置格式无效，应为 {name: value} JSON")
 
         self._load_schedule()
         self._schedule_task = asyncio.create_task(self._schedule_loop())
@@ -93,10 +100,9 @@ class ZhihuishuPlugin(Star):
 
         # 方式4: 默认配置
         default_cfg = {
-            "headless": True,
+            "cookie": "",
             "cookie_file": "cookie.json",
             "cache_file": "homework_cache.json",
-            "qrcode_timeout": 120,
         }
         try:
             with open(config_path, "w", encoding="utf-8") as f:
@@ -264,7 +270,7 @@ class ZhihuishuPlugin(Star):
 
             cookie_loaded = auth.load_cookie(session, config.COOKIE_FILE)
             if not cookie_loaded or not auth.verify_login(session):
-                return "❌ Cookie 无效或不存在，请先完成登录并确保 cookie.json 已放入插件数据目录。\n路径: " + config.COOKIE_FILE
+                return "❌ Cookie 无效或不存在，请在 AstrBot 管理面板插件配置中更新 Cookie JSON。\n当前文件: " + config.COOKIE_FILE
 
             uuid = auth.get_uuid(session)
             if not uuid:
@@ -343,7 +349,7 @@ class ZhihuishuPlugin(Star):
     async def zhihuishu(self, event: AstrMessageEvent):
         """智慧树作业提醒主指令。
         /zhihuishu              - 立即检查并返回作业列表
-        /zhihuishu login        - 微信扫码登录，保存 Cookie
+        /zhihuishu cookie       - 从管理面板配置同步 Cookie 到文件
         /zhihuishu set <HH:MM>  - 设置每天定时推送时间
         /zhihuishu cancel       - 取消定时推送
         /zhihuishu status       - 查看当前状态
@@ -409,56 +415,29 @@ class ZhihuishuPlugin(Star):
 
             yield event.plain_result("\n".join(status_lines))
 
-        elif subcmd == "login":
-            yield event.plain_result("🔑 正在打开智慧树登录页面，请稍候...")
-
-            pw_objs, qrcode_or_error = await auth.prepare_qrcode(
-                config.HEADLESS,
-                self.data_dir,
-            )
-
-            if pw_objs is None:
-                error_msg = qrcode_or_error or "未知错误"
-                yield event.plain_result(f"❌ {error_msg}")
-                return
-
-            qrcode_path = qrcode_or_error
-
-            try:
-                yield event.chain_result([
-                    Image(file=qrcode_path),
-                    Plain(f"请使用微信扫描二维码登录（{config.QRCODE_TIMEOUT_SECONDS} 秒内）"),
-                ])
-            except Exception:
-                yield event.plain_result(
-                    f"请使用微信扫描二维码登录（{config.QRCODE_TIMEOUT_SECONDS} 秒内）。\n"
-                    f"二维码已保存到：{qrcode_path}"
-                )
-
-            session = await auth.complete_login(
-                pw_objs,
-                config.COOKIE_FILE,
-                config.QRCODE_TIMEOUT_SECONDS,
-            )
-
-            if session:
-                yield event.plain_result("✅ 登录成功！Cookie 已保存，现在可以 /zhihuishu 检查作业了。")
+        elif subcmd == "cookie":
+            cfg = self._get_plugin_config()
+            cookie_value = cfg.get("cookie", "")
+            if cookie_value:
+                if auth.save_cookie_from_config(cookie_value, config.COOKIE_FILE):
+                    config.update_config(cfg, self.data_dir)
+                    yield event.plain_result("✅ Cookie 已从配置同步到 data/cookie.json")
+                else:
+                    yield event.plain_result("❌ Cookie 格式无效，应为 {name: value} 格式的 JSON")
             else:
-                yield event.plain_result("❌ 登录超时或失败，请重新 /zhihuishu login")
+                yield event.plain_result("❌ 配置中未设置 cookie，请在 AstrBot 管理面板中填写 Cookie JSON。")
 
         elif subcmd == "config":
             cfg_path = os.path.join(self.data_dir, "plugin_config.json")
             if len(parts) == 2:
                 # 显示当前配置
-                lines = ["⚙️ 插件配置（编辑路径见下方）", ""]
-                lines.append(f"headless: {config.HEADLESS}")
-                lines.append(f"qrcode_timeout: {config.QRCODE_TIMEOUT_SECONDS}")
-                lines.append(f"cookie_file: {config.COOKIE_FILE}")
-                lines.append(f"cache_file: {config.CACHE_FILE}")
+                lines = ["⚙️ 插件配置", ""]
+                cookie_set = "✅ 已设置" if config.COOKIE_CONFIG else "❌ 未设置"
+                lines.append(f"Cookie 配置: {cookie_set}")
+                lines.append(f"Cookie 文件: {config.COOKIE_FILE}")
+                lines.append(f"缓存文件: {config.CACHE_FILE}")
                 lines.append("")
-                lines.append(f"配置文件：{cfg_path}")
-                lines.append("用法：/zhihuishu config <key> <value>")
-                lines.append("可修改的 key：headless, qrcode_timeout")
+                lines.append("Cookie 请在 AstrBot 管理面板插件配置中修改，修改后执行 /zhihuishu cookie 生效。")
                 yield event.plain_result("\n".join(lines))
                 return
 
@@ -469,29 +448,25 @@ class ZhihuishuPlugin(Star):
             key = parts[2]
             value = " ".join(parts[3:])
 
-            # 读取当前配置
             cfg = self._get_plugin_config()
-
-            if key == "headless":
-                cfg[key] = value.lower() in ("true", "1", "yes", "on")
-            elif key == "qrcode_timeout":
-                try:
-                    cfg[key] = int(value)
-                except ValueError:
-                    yield event.plain_result("qrcode_timeout 必须是整数")
-                    return
-            else:
-                cfg[key] = value
-
+            cfg[key] = value
             self._save_plugin_config(cfg)
             config.update_config(cfg, self.data_dir)
-            yield event.plain_result(f"✅ 配置已更新：{key} = {cfg[key]}")
+
+            # 如果修改的是 cookie，同步到文件
+            if key == "cookie":
+                if auth.save_cookie_from_config(value, config.COOKIE_FILE):
+                    yield event.plain_result(f"✅ 配置已更新：cookie → 已同步到 {config.COOKIE_FILE}")
+                else:
+                    yield event.plain_result(f"⚠️ 配置已保存但 Cookie JSON 格式无效，未同步到文件")
+            else:
+                yield event.plain_result(f"✅ 配置已更新：{key} = {value}")
 
         else:
             yield event.plain_result(
                 "未知子命令。\n用法：\n"
                 "  /zhihuishu              立即检查作业\n"
-                "  /zhihuishu login        微信扫码登录\n"
+                "  /zhihuishu cookie       从配置同步 Cookie\n"
                 "  /zhihuishu set <HH:MM>  设置每天推送时间\n"
                 "  /zhihuishu cancel       取消定时推送\n"
                 "  /zhihuishu status       查看状态\n"

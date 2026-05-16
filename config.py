@@ -2,19 +2,13 @@
 
 import os
 
-# 动态配置（由 main.py 初始化时更新）
-ZHS_USERNAME = ""
-ZHS_PASSWORD = ""
-HEADLESS = True
+# Cookie 内容（从 AstrBot 管理面板配置同步）
+COOKIE_CONFIG = ""
+
+# 文件路径
 COOKIE_FILE = "data/cookie.json"
 CACHE_FILE = "data/homework_cache.json"
-QRCODE_TIMEOUT_SECONDS = 120
 DATA_DIR = "data"
-
-# 保留空值兼容 auth.py 中的 notifier 调用（不再实际使用）
-WXPUSHER_APP_TOKEN = ""
-WXPUSHER_UID = ""
-CHECK_INTERVAL_HOURS = 6
 
 # 智慧树接口（不要修改）
 LOGIN_URL = "https://passport.zhihuishu.com/login"
@@ -35,10 +29,9 @@ DEFAULT_HEADERS = {
 
 def update_config(plugin_config: dict, data_dir: str = "") -> None:
     """从 AstrBot 配置更新本模块配置。"""
-    global HEADLESS, COOKIE_FILE, CACHE_FILE, QRCODE_TIMEOUT_SECONDS, DATA_DIR
+    global COOKIE_CONFIG, COOKIE_FILE, CACHE_FILE, DATA_DIR
 
-    HEADLESS = plugin_config.get("headless", HEADLESS)
-    QRCODE_TIMEOUT_SECONDS = plugin_config.get("qrcode_timeout", QRCODE_TIMEOUT_SECONDS)
+    COOKIE_CONFIG = plugin_config.get("cookie", COOKIE_CONFIG)
 
     if data_dir:
         DATA_DIR = data_dir
