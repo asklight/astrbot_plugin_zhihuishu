@@ -39,7 +39,7 @@ def save_cookie_from_config(cookie_json_str: str, path: str) -> bool:
 
     candidates = [cookie_json_str]
     # 如果原始 JSON 解析失败，尝试去掉内部换行再解析
-    stripped = " ".join(line.strip() for line in cookie_json_str.splitlines() if line.strip())
+    stripped = "".join(line.strip() for line in cookie_json_str.splitlines() if line.strip())
     if stripped != cookie_json_str:
         candidates.append(stripped)
 
