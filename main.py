@@ -493,9 +493,6 @@ class ZhihuishuPlugin(Star):
             else:
                 status_lines.append("定时推送：❌ 未启用")
 
-            status_lines.append(f"Cookie 文件：{config.COOKIE_FILE}")
-            status_lines.append(f"缓存文件：{config.CACHE_FILE}")
-
             yield event.plain_result("\n".join(status_lines))
 
         elif subcmd == "testpush":
