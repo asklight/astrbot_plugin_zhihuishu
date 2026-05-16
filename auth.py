@@ -97,6 +97,7 @@ def verify_login(session: requests.Session) -> bool:
 
 def get_uuid(session: requests.Session) -> Optional[str]:
     """获取用户 uuid（rt.username）。"""
+    # 方式1: 通过 API
     try:
         ts = int(time.time() * 1000)
         resp = session.get(config.VERIFY_URL, params={"dateFormate": ts}, timeout=10)
@@ -108,6 +109,8 @@ def get_uuid(session: requests.Session) -> Optional[str]:
             return username
     except Exception:
         pass
+
+    # 方式2: exitRecod_ cookie（旧版）
     try:
         for key in session.cookies.keys():
             if isinstance(key, str) and key.startswith("exitRecod_"):
@@ -116,4 +119,18 @@ def get_uuid(session: requests.Session) -> Optional[str]:
                     return value
     except Exception:
         pass
+
+    # 方式3: CASLOGC cookie（新版 CAS 登录），URL 编码的 JSON 含 uuid
+    try:
+        from urllib.parse import unquote
+        caslogc = session.cookies.get("CASLOGC")
+        if caslogc:
+            decoded = unquote(caslogc)
+            data = json.loads(decoded)
+            uuid = data.get("uuid")
+            if uuid:
+                return str(uuid)
+    except Exception:
+        pass
+
     return None
