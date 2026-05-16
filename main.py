@@ -149,12 +149,22 @@ class ZhihuishuPlugin(Star):
 
     def _get_event_umo(self, event: AstrMessageEvent) -> dict | None:
         """获取消息来源信息（全部转为可 JSON 序列化的字符串），供定时推送使用。"""
-        # platform — 可能是字符串或适配器对象，统一转 str
+        # platform — v4.23 返回适配器对象而非字符串，需提取 platform_name
         platform = "unknown"
         try:
-            raw_platform = getattr(event, "platform", None)
-            if raw_platform is not None:
-                platform = str(raw_platform)
+            raw = getattr(event, "platform", None)
+            if raw is not None:
+                if isinstance(raw, str):
+                    platform = raw
+                else:
+                    # 从适配器对象提取名称
+                    platform = (
+                        getattr(raw, "platform_name", None)
+                        or getattr(raw, "name", None)
+                        or (getattr(raw, "meta", {}) or {}).get("name")
+                        or raw.__class__.__name__
+                    )
+                    platform = str(platform)
         except Exception:
             pass
 
@@ -227,23 +237,18 @@ class ZhihuishuPlugin(Star):
 
     async def _send_to_umo(self, info: dict, text: str) -> bool:
         """发送消息到指定目标。info 由 _get_event_umo 返回。"""
-        from astrbot.api.message_components import Plain
+        from astrbot.api.message_components import MessageChain, Plain
 
-        chain = [Plain(text)]
+        chain = MessageChain([Plain(text)])
         umo = info.get("umo", "")
         sender_id = info.get("sender_id", "") or ""
         platform_name = info.get("platform", "")
-
-        # 解析 platform（处理 weixin_personal(weixin_oc) 格式）
-        if "(" in platform_name:
-            platform_name = platform_name.split("(")[0]
 
         # 方式1: 通过 platform_manager 获取适配器直接发送
         pm = getattr(self.context, "platform_manager", None)
         if pm:
             adapter = None
             try:
-                # 尝试获取平台适配器
                 if hasattr(pm, "get"):
                     adapter = pm.get(platform_name)
                 elif hasattr(pm, "get_adapter"):
@@ -255,37 +260,30 @@ class ZhihuishuPlugin(Star):
 
             if adapter and hasattr(adapter, "send_message"):
                 try:
-                    target = sender_id or umo
-                    await adapter.send_message(target, chain)
-                    logger.info(f"[智慧树] 推送成功 via adapter.send_message")
+                    await adapter.send_message(sender_id or umo, chain)
+                    logger.info("[智慧树] 推送成功 via adapter.send_message")
                     return True
                 except Exception as e:
                     logger.warning(f"[智慧树] adapter.send_message 失败: {e}")
 
-        # 方式2: context.send_message
+        # 方式2: context.send_message（用完整 umo）
         if hasattr(self.context, "send_message"):
-            for target in (umo, sender_id):
-                if not target:
-                    continue
-                try:
-                    await self.context.send_message(target, chain)
-                    logger.info(f"[智慧树] 推送成功 via context.send_message")
-                    return True
-                except Exception as e:
-                    logger.warning(f"[智慧树] context.send_message({target[:30]}…) 失败: {e}")
+            try:
+                await self.context.send_message(umo, chain)
+                logger.info("[智慧树] 推送成功 via context.send_message")
+                return True
+            except Exception as e:
+                logger.warning(f"[智慧树] context.send_message 失败: {e}")
 
         # 方式3: platform_manager.send_message
         if pm and hasattr(pm, "send_message"):
-            for target in (umo, sender_id):
-                if not target:
-                    continue
-                try:
-                    await pm.send_message(target, chain)
-                    return True
-                except Exception as e:
-                    logger.warning(f"[智慧树] pm.send_message 失败: {e}")
+            try:
+                await pm.send_message(umo, chain)
+                return True
+            except Exception as e:
+                logger.warning(f"[智慧树] pm.send_message 失败: {e}")
 
-        logger.error(f"[智慧树] 发送失败。platform={platform_name}, umo={umo}, sender_id={sender_id}")
+        logger.error(f"[智慧树] 发送失败。platform={platform_name}, umo={umo}")
         return False
         return False
 
