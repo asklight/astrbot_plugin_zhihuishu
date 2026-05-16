@@ -30,19 +30,31 @@ def save_cookie(session: requests.Session, path: str) -> None:
 
 
 def save_cookie_from_config(cookie_json_str: str, path: str) -> bool:
-    """从配置 JSON 字符串解析 cookie 并写入文件。支持 {name: value} 格式。"""
+    """从配置 JSON 字符串解析 cookie 并写入文件。
+
+    先尝试标准 JSON 解析；失败则合并多行为一行再试。
+    """
     if not cookie_json_str or not cookie_json_str.strip():
         return False
-    try:
-        data = json.loads(cookie_json_str)
-        if not isinstance(data, dict) or not data:
-            return False
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        return True
-    except (json.JSONDecodeError, Exception):
-        return False
+
+    candidates = [cookie_json_str]
+    # 如果原始 JSON 解析失败，尝试去掉内部换行再解析
+    stripped = " ".join(line.strip() for line in cookie_json_str.splitlines() if line.strip())
+    if stripped != cookie_json_str:
+        candidates.append(stripped)
+
+    for s in candidates:
+        try:
+            data = json.loads(s)
+            if isinstance(data, dict) and data:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                return True
+        except (json.JSONDecodeError, Exception):
+            continue
+
+    return False
 
 
 def load_cookie(session: requests.Session, path: str) -> bool:
