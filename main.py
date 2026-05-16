@@ -432,6 +432,7 @@ class ZhihuishuPlugin(Star):
         """智慧树作业提醒主指令。
         /zhihuishu              - 立即检查并返回作业列表
         /zhihuishu cookie       - 从管理面板配置同步 Cookie 到文件
+        /zhihuishu testpush    - 发送测试消息（调试用）
         /zhihuishu set <HH:MM>  - 设置每天定时推送时间
         /zhihuishu cancel       - 取消定时推送
         /zhihuishu status       - 查看当前状态
@@ -497,6 +498,23 @@ class ZhihuishuPlugin(Star):
 
             yield event.plain_result("\n".join(status_lines))
 
+        elif subcmd == "testpush":
+            target = self._schedule_data.get("target_umo")
+            if not target:
+                yield event.plain_result("❌ 未设置定时推送，请先 /zhihuishu set <HH:MM>")
+                return
+            yield event.plain_result(
+                f"🔍 发送测试消息…\n"
+                f"  umo={target.get('umo', '?')}\n"
+                f"  platform={target.get('platform', '?')}\n"
+                f"  sender_id={target.get('sender_id', '?')}"
+            )
+            ok = await self._send_to_umo(target, "智慧树插件测试消息")
+            if ok:
+                yield event.plain_result("✅ 测试消息发送成功")
+            else:
+                yield event.plain_result("❌ 发送失败，查看 AstrBot 日志获取详情")
+
         elif subcmd == "cookie":
             cfg = self._get_plugin_config()
             cookie_value = cfg.get("cookie", "")
@@ -549,6 +567,7 @@ class ZhihuishuPlugin(Star):
                 "未知子命令。\n用法：\n"
                 "  /zhihuishu              立即检查作业\n"
                 "  /zhihuishu cookie       从配置同步 Cookie\n"
+                "  /zhihuishu testpush     发送测试推送\n"
                 "  /zhihuishu set <HH:MM>  设置每天推送时间\n"
                 "  /zhihuishu cancel       取消定时推送\n"
                 "  /zhihuishu status       查看状态\n"
