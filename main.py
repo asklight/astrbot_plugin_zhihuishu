@@ -148,43 +148,82 @@ class ZhihuishuPlugin(Star):
             json.dump(self._schedule_data, f, ensure_ascii=False, indent=2)
 
     def _get_event_umo(self, event: AstrMessageEvent) -> dict | None:
-        """获取消息来源信息，供定时推送使用。"""
-        result: dict = {
-            "umo": getattr(event, "unified_msg_origin", None),
-            "platform": getattr(event, "platform", "unknown"),
-        }
+        """获取消息来源信息（全部转为可 JSON 序列化的字符串），供定时推送使用。"""
+        # platform — 可能是字符串或适配器对象，统一转 str
+        platform = "unknown"
+        try:
+            raw_platform = getattr(event, "platform", None)
+            if raw_platform is not None:
+                platform = str(raw_platform)
+        except Exception:
+            pass
 
-        # 获取 sender_id
-        sender_id = getattr(event, "sender_id", None)
-        if sender_id is None and hasattr(event, "get_sender_id"):
+        # unified_msg_origin
+        umo = None
+        try:
+            raw_umo = getattr(event, "unified_msg_origin", None)
+            if raw_umo is not None:
+                umo = str(raw_umo)
+        except Exception:
+            pass
+
+        # sender_id
+        sender_id = None
+        try:
+            sid = getattr(event, "sender_id", None)
+            if sid is not None and not callable(sid):
+                sender_id = str(sid)
+        except Exception:
+            pass
+        if not sender_id and hasattr(event, "get_sender_id"):
             try:
-                sender_id = event.get_sender_id()
+                sid = event.get_sender_id()
+                if sid is not None:
+                    sender_id = str(sid)
             except Exception:
                 pass
-        if sender_id is None:
-            sender = getattr(event, "sender", None)
-            if sender is not None:
-                sender_id = getattr(sender, "user_id", None)
-        result["sender_id"] = sender_id
-
-        # 获取 group_id
-        group_id = getattr(event, "group_id", None)
-        if group_id is None and hasattr(event, "get_group_id"):
+        if not sender_id:
             try:
-                group_id = event.get_group_id()
+                sender = getattr(event, "sender", None)
+                if sender is not None:
+                    uid = getattr(sender, "user_id", None)
+                    if uid is not None:
+                        sender_id = str(uid)
             except Exception:
                 pass
-        result["group_id"] = group_id
 
-        # 构造 umo（如果 unified_msg_origin 为空）
-        if not result["umo"]:
-            platform = result["platform"]
+        # group_id
+        group_id = None
+        try:
+            gid = getattr(event, "group_id", None)
+            if gid is not None and not callable(gid):
+                group_id = str(gid)
+        except Exception:
+            pass
+        if not group_id and hasattr(event, "get_group_id"):
+            try:
+                gid = event.get_group_id()
+                if gid is not None:
+                    group_id = str(gid)
+            except Exception:
+                pass
+
+        # 构造 umo
+        if not umo:
             if group_id:
-                result["umo"] = f"{platform}:GroupMessage:{group_id}"
+                umo = f"{platform}:GroupMessage:{group_id}"
             elif sender_id:
-                result["umo"] = f"{platform}:FriendMessage:{sender_id}"
+                umo = f"{platform}:FriendMessage:{sender_id}"
 
-        return result if result["umo"] or result["sender_id"] else None
+        if not umo and not sender_id:
+            return None
+
+        return {
+            "umo": umo or "",
+            "platform": platform,
+            "sender_id": sender_id or "",
+            "group_id": group_id or "",
+        }
 
     async def _send_to_umo(self, info: dict, text: str) -> bool:
         """发送消息到指定目标。info 由 _get_event_umo 返回。"""
