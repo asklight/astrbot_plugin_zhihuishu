@@ -412,11 +412,7 @@ class ZhihuishuPlugin(Star):
         elif subcmd == "login":
             yield event.plain_result("🔑 正在打开智慧树登录页面，请稍候...")
 
-            loop = asyncio.get_event_loop()
-
-            pw_objs, qrcode_or_error = await loop.run_in_executor(
-                None,
-                auth.prepare_qrcode,
+            pw_objs, qrcode_or_error = await auth.prepare_qrcode(
                 config.HEADLESS,
                 self.data_dir,
             )
@@ -439,9 +435,7 @@ class ZhihuishuPlugin(Star):
                     f"二维码已保存到：{qrcode_path}"
                 )
 
-            session = await loop.run_in_executor(
-                None,
-                auth.complete_login,
+            session = await auth.complete_login(
                 pw_objs,
                 config.COOKIE_FILE,
                 config.QRCODE_TIMEOUT_SECONDS,
