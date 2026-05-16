@@ -1,4 +1,4 @@
-"""智慧树 Cookie 持久化与微信扫码登录模块（Playwright / Firefox）。"""
+"""智慧树 Cookie 持久化与微信扫码登录模块（Playwright / Chromium）。"""
 
 from __future__ import annotations
 
@@ -364,7 +364,7 @@ def _show_qrcode(path: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
-    """打开 Firefox、进入登录页、点击微信登录、截图二维码。
+    """打开 Chromium、进入登录页、点击微信登录、截图二维码。
 
     返回 (playwright_objects, qrcode_path) 或 (None, error_msg)。
     playwright_objects = (playwright, browser, context, page)。
@@ -372,7 +372,7 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
     """
     try:
         p = sync_playwright().start()
-        browser = p.firefox.launch(headless=headless)
+        browser = p.chromium.launch(headless=headless)
         context = browser.new_context()
         page = context.new_page()
 
@@ -396,11 +396,11 @@ def prepare_qrcode(headless: bool = True, data_dir: str = "data"):
         return (p, browser, context, page), qrcode_path
     except Exception as e:
         msg = str(e)
-        if any(kw in msg.lower() for kw in ("firefox", "browser", "executable", "浏览器", "可执行")):
+        if any(kw in msg.lower() for kw in ("chromium", "browser", "executable", "浏览器", "可执行")):
             msg = (
-                f"未找到 Firefox 浏览器。请先执行：\n"
+                f"未找到 Chromium 浏览器。请先执行：\n"
                 f"  pip install playwright\n"
-                f"  playwright install firefox\n"
+                f"  playwright install chromium\n"
                 f"原始错误: {msg}"
             )
         return None, msg
