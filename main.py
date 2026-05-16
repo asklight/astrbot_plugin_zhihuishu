@@ -147,16 +147,14 @@ class ZhihuishuPlugin(Star):
         with open(self._schedule_path(), "w", encoding="utf-8") as f:
             json.dump(self._schedule_data, f, ensure_ascii=False, indent=2)
 
-    def _get_event_umo(self, event: AstrMessageEvent) -> str | None:
-        """防御性获取消息来源标识。"""
-        # 优先尝试 unified_msg_origin 属性
-        umo = getattr(event, "unified_msg_origin", None)
-        if umo:
-            return umo
+    def _get_event_umo(self, event: AstrMessageEvent) -> dict | None:
+        """获取消息来源信息，供定时推送使用。"""
+        result: dict = {
+            "umo": getattr(event, "unified_msg_origin", None),
+            "platform": getattr(event, "platform", "unknown"),
+        }
 
-        # fallback: 手动构造
-        platform = getattr(event, "platform", "unknown")
-
+        # 获取 sender_id
         sender_id = getattr(event, "sender_id", None)
         if sender_id is None and hasattr(event, "get_sender_id"):
             try:
@@ -164,58 +162,78 @@ class ZhihuishuPlugin(Star):
             except Exception:
                 pass
         if sender_id is None:
-            sender_id = getattr(event, "sender", None)
-            if sender_id is not None:
-                sender_id = getattr(sender_id, "user_id", None)
+            sender = getattr(event, "sender", None)
+            if sender is not None:
+                sender_id = getattr(sender, "user_id", None)
+        result["sender_id"] = sender_id
 
+        # 获取 group_id
         group_id = getattr(event, "group_id", None)
         if group_id is None and hasattr(event, "get_group_id"):
             try:
                 group_id = event.get_group_id()
             except Exception:
                 pass
+        result["group_id"] = group_id
 
-        if group_id:
-            return f"{platform}:GroupMessage:{group_id}"
-        if sender_id:
-            return f"{platform}:FriendMessage:{sender_id}"
-        return None
+        # 构造 umo（如果 unified_msg_origin 为空）
+        if not result["umo"]:
+            platform = result["platform"]
+            if group_id:
+                result["umo"] = f"{platform}:GroupMessage:{group_id}"
+            elif sender_id:
+                result["umo"] = f"{platform}:FriendMessage:{sender_id}"
 
-    async def _send_to_umo(self, umo: str, text: str) -> bool:
-        """防御性发送消息到指定 UMO，尝试多种 API。"""
+        return result if result["umo"] or result["sender_id"] else None
+
+    async def _send_to_umo(self, info: dict, text: str) -> bool:
+        """发送消息到指定目标。info 由 _get_event_umo 返回。"""
         try:
             from astrbot.api.message_components import Plain
             chain = [Plain(text)]
         except Exception:
             chain = text
 
-        # 方式1: context.send_message
+        umo = info.get("umo", "")
+        sender_id = info.get("sender_id", "") or ""
+
+        # 方式1: context.send_message（用 umo）
         try:
             if hasattr(self.context, "send_message"):
                 await self.context.send_message(umo, chain)
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[智慧树] context.send_message({umo}) 失败: {e}")
 
-        # 方式2: platform_manager.send_message
+        # 方式2: context.send_message（用 sender_id）
+        if sender_id:
+            try:
+                if hasattr(self.context, "send_message"):
+                    await self.context.send_message(sender_id, chain)
+                    return True
+            except Exception as e:
+                logger.debug(f"[智慧树] context.send_message({sender_id}) 失败: {e}")
+
+        # 方式3: platform_manager.send_message
         try:
             pm = getattr(self.context, "platform_manager", None)
             if pm and hasattr(pm, "send_message"):
                 await pm.send_message(umo, chain)
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[智慧树] platform_manager.send_message 失败: {e}")
 
-        # 方式3: bot.send_message
-        try:
-            bot = getattr(self.context, "bot", None)
-            if bot and hasattr(bot, "send_message"):
-                await bot.send_message(umo, chain)
-                return True
-        except Exception:
-            pass
+        if sender_id:
+            try:
+                pm = getattr(self.context, "platform_manager", None)
+                if pm and hasattr(pm, "send_message"):
+                    await pm.send_message(sender_id, chain)
+                    return True
+            except Exception as e:
+                logger.debug(f"[智慧树] platform_manager.send_message({sender_id}) 失败: {e}")
 
-        logger.error(f"[智慧树] 无法发送消息，AstrBot API 不兼容，UMO={umo}")
+        logger.error(f"[智慧树] 无法发送消息，umo={umo}, sender_id={sender_id}")
+        return False
         return False
 
     async def _schedule_loop(self):
@@ -242,9 +260,9 @@ class ZhihuishuPlugin(Star):
 
                 last_push = self._schedule_data.get("last_push_date")
                 if current_time == push_time and last_push != today:
-                    umo = self._schedule_data.get("target_umo")
-                    if umo:
-                        await self._do_push(umo)
+                    target = self._schedule_data.get("target_umo")
+                    if target:
+                        await self._do_push(target)
                         self._schedule_data["last_push_date"] = today
                         self._save_schedule()
 
@@ -253,12 +271,12 @@ class ZhihuishuPlugin(Star):
             except Exception as e:
                 logger.error(f"[智慧树] 定时任务异常: {e}")
 
-    async def _do_push(self, unified_msg_origin: str):
+    async def _do_push(self, target: dict):
         """执行定时推送。"""
         try:
             text = await self._check_homeworks()
             if text:
-                await self._send_to_umo(unified_msg_origin, text)
+                await self._send_to_umo(target, text)
         except Exception as e:
             logger.error(f"[智慧树] 定时推送失败: {e}")
 
