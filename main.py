@@ -227,51 +227,65 @@ class ZhihuishuPlugin(Star):
 
     async def _send_to_umo(self, info: dict, text: str) -> bool:
         """发送消息到指定目标。info 由 _get_event_umo 返回。"""
-        try:
-            from astrbot.api.message_components import Plain
-            chain = [Plain(text)]
-        except Exception:
-            chain = text
+        from astrbot.api.message_components import Plain
 
+        chain = [Plain(text)]
         umo = info.get("umo", "")
         sender_id = info.get("sender_id", "") or ""
+        platform_name = info.get("platform", "")
 
-        # 方式1: context.send_message（用 umo）
-        try:
-            if hasattr(self.context, "send_message"):
-                await self.context.send_message(umo, chain)
-                return True
-        except Exception as e:
-            logger.debug(f"[智慧树] context.send_message({umo}) 失败: {e}")
+        # 解析 platform（处理 weixin_personal(weixin_oc) 格式）
+        if "(" in platform_name:
+            platform_name = platform_name.split("(")[0]
 
-        # 方式2: context.send_message（用 sender_id）
-        if sender_id:
+        # 方式1: 通过 platform_manager 获取适配器直接发送
+        pm = getattr(self.context, "platform_manager", None)
+        if pm:
+            adapter = None
             try:
-                if hasattr(self.context, "send_message"):
-                    await self.context.send_message(sender_id, chain)
+                # 尝试获取平台适配器
+                if hasattr(pm, "get"):
+                    adapter = pm.get(platform_name)
+                elif hasattr(pm, "get_adapter"):
+                    adapter = pm.get_adapter(platform_name)
+                elif hasattr(pm, "platforms"):
+                    adapter = pm.platforms.get(platform_name)
+            except Exception:
+                pass
+
+            if adapter and hasattr(adapter, "send_message"):
+                try:
+                    target = sender_id or umo
+                    await adapter.send_message(target, chain)
+                    logger.info(f"[智慧树] 推送成功 via adapter.send_message")
                     return True
-            except Exception as e:
-                logger.debug(f"[智慧树] context.send_message({sender_id}) 失败: {e}")
+                except Exception as e:
+                    logger.warning(f"[智慧树] adapter.send_message 失败: {e}")
+
+        # 方式2: context.send_message
+        if hasattr(self.context, "send_message"):
+            for target in (umo, sender_id):
+                if not target:
+                    continue
+                try:
+                    await self.context.send_message(target, chain)
+                    logger.info(f"[智慧树] 推送成功 via context.send_message")
+                    return True
+                except Exception as e:
+                    logger.warning(f"[智慧树] context.send_message({target[:30]}…) 失败: {e}")
 
         # 方式3: platform_manager.send_message
-        try:
-            pm = getattr(self.context, "platform_manager", None)
-            if pm and hasattr(pm, "send_message"):
-                await pm.send_message(umo, chain)
-                return True
-        except Exception as e:
-            logger.debug(f"[智慧树] platform_manager.send_message 失败: {e}")
-
-        if sender_id:
-            try:
-                pm = getattr(self.context, "platform_manager", None)
-                if pm and hasattr(pm, "send_message"):
-                    await pm.send_message(sender_id, chain)
+        if pm and hasattr(pm, "send_message"):
+            for target in (umo, sender_id):
+                if not target:
+                    continue
+                try:
+                    await pm.send_message(target, chain)
                     return True
-            except Exception as e:
-                logger.debug(f"[智慧树] platform_manager.send_message({sender_id}) 失败: {e}")
+                except Exception as e:
+                    logger.warning(f"[智慧树] pm.send_message 失败: {e}")
 
-        logger.error(f"[智慧树] 无法发送消息，umo={umo}, sender_id={sender_id}")
+        logger.error(f"[智慧树] 发送失败。platform={platform_name}, umo={umo}, sender_id={sender_id}")
         return False
         return False
 
@@ -313,14 +327,14 @@ class ZhihuishuPlugin(Star):
     async def _do_push(self, target: dict):
         """执行定时推送。"""
         try:
-            text = await self._check_homeworks()
+            text = await self._check_homeworks(limit=5)
             if text:
                 await self._send_to_umo(target, text)
         except Exception as e:
             logger.error(f"[智慧树] 定时推送失败: {e}")
 
-    async def _check_homeworks(self) -> str:
-        """执行检查并返回格式化文本。"""
+    async def _check_homeworks(self, limit: int = 0) -> str:
+        """执行检查并返回格式化文本。limit=0 表示全部，>0 表示只取前 N 条。"""
         try:
             session = requests.Session()
             session.headers.update(config.DEFAULT_HEADERS)
@@ -338,7 +352,7 @@ class ZhihuishuPlugin(Star):
             to_notify = cache_module.filter_new(homeworks, cache)
             unfinished = [hw for hw in homeworks if not bool(hw.get("is_submitted"))]
 
-            text = self._build_message(unfinished, to_notify)
+            text = self._build_message(unfinished, to_notify, limit)
 
             updated = cache_module.update_cache(cache, homeworks)
             cache_module.save_cache(updated, config.CACHE_FILE)
@@ -349,26 +363,34 @@ class ZhihuishuPlugin(Star):
             logger.error(f"[智慧树] 检查作业异常: {e}")
             return f"❌ 检查作业时出错: {str(e)[:200]}"
 
-    def _build_message(self, homeworks: list, to_notify: list | None = None) -> str:
-        """构建作业列表消息文本。"""
+    def _build_message(self, homeworks: list, to_notify: list | None = None, limit: int = 0) -> str:
+        """构建作业列表消息文本。limit=0 全部，>0 只取截止日期最近的前 N 条。"""
         if not homeworks:
             return "✅ 当前暂无待提交作业"
 
         now = datetime.now()
         sorted_items = sorted(homeworks, key=lambda x: x.get("end_time") or datetime.fromtimestamp(0))
 
+        total = len(sorted_items)
+        if limit > 0 and len(sorted_items) > limit:
+            sorted_items = sorted_items[:limit]
+
         if to_notify:
             lines = [
                 "📚 智慧树作业提醒",
-                f"本次新增 {len(to_notify)} 项；当前未完成共 {len(sorted_items)} 项。",
+                f"本次新增 {len(to_notify)} 项；当前未完成共 {total} 项。",
                 "",
             ]
         else:
             lines = [
                 "📚 智慧树作业提醒",
-                f"当前未完成共 {len(sorted_items)} 项：",
+                f"当前未完成共 {total} 项：",
                 "",
             ]
+
+        if limit > 0 and total > limit:
+            lines.append(f"（仅显示最近 {limit} 条，发送 /zhihuishu 查看全部）")
+            lines.append("")
 
         for hw in sorted_items:
             end_time = hw.get("end_time")
