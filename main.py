@@ -237,9 +237,14 @@ class ZhihuishuPlugin(Star):
 
     async def _send_to_umo(self, info: dict, text: str) -> bool:
         """发送消息到指定目标。info 由 _get_event_umo 返回。"""
-        from astrbot.api.message_components import MessageChain, Plain
+        from astrbot.api.message_components import Plain
 
-        chain = MessageChain([Plain(text)])
+        # AstrBot v4.23 context.send_message 要求参数有 .chain 属性
+        class _Chain:
+            def __init__(self, components):
+                self.chain = components
+
+        chain = _Chain([Plain(text)])
         umo = info.get("umo", "")
         sender_id = info.get("sender_id", "") or ""
         platform_name = info.get("platform", "")
