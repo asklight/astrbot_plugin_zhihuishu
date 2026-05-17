@@ -290,7 +290,6 @@ class ZhihuishuPlugin(Star):
 
         logger.error(f"[智慧树] 发送失败。platform={platform_name}, umo={umo}")
         return False
-        return False
 
     async def _schedule_loop(self):
         """后台定时任务：每分钟检查是否到达推送时间。"""
@@ -336,32 +335,36 @@ class ZhihuishuPlugin(Star):
         except Exception as e:
             logger.error(f"[智慧树] 定时推送失败: {e}")
 
+    def _do_check_homeworks(self, limit: int = 0) -> str:
+        """同步执行检查并返回格式化文本。limit=0 表示全部，>0 表示只取前 N 条。"""
+        session = requests.Session()
+        session.headers.update(config.DEFAULT_HEADERS)
+
+        cookie_loaded = auth.load_cookie(session, config.COOKIE_FILE)
+        if not cookie_loaded or not auth.verify_login(session):
+            return "❌ Cookie 无效或不存在，请在 AstrBot 管理面板插件配置中更新 Cookie JSON。\n当前文件: " + config.COOKIE_FILE
+
+        uuid = auth.get_uuid(session)
+        if not uuid:
+            return "❌ 无法获取用户 uuid，请检查登录状态。"
+
+        homeworks = crawler.get_all_homeworks(session, uuid)
+        cache = cache_module.load_cache(config.CACHE_FILE)
+        to_notify = cache_module.filter_new(homeworks, cache)
+        unfinished = [hw for hw in homeworks if not bool(hw.get("is_submitted"))]
+
+        text = self._build_message(unfinished, to_notify, limit)
+
+        updated = cache_module.update_cache(cache, homeworks)
+        cache_module.save_cache(updated, config.CACHE_FILE)
+
+        return text
+
     async def _check_homeworks(self, limit: int = 0) -> str:
         """执行检查并返回格式化文本。limit=0 表示全部，>0 表示只取前 N 条。"""
         try:
-            session = requests.Session()
-            session.headers.update(config.DEFAULT_HEADERS)
-
-            cookie_loaded = auth.load_cookie(session, config.COOKIE_FILE)
-            if not cookie_loaded or not auth.verify_login(session):
-                return "❌ Cookie 无效或不存在，请在 AstrBot 管理面板插件配置中更新 Cookie JSON。\n当前文件: " + config.COOKIE_FILE
-
-            uuid = auth.get_uuid(session)
-            if not uuid:
-                return "❌ 无法获取用户 uuid，请检查登录状态。"
-
-            homeworks = crawler.get_all_homeworks(session, uuid)
-            cache = cache_module.load_cache(config.CACHE_FILE)
-            to_notify = cache_module.filter_new(homeworks, cache)
-            unfinished = [hw for hw in homeworks if not bool(hw.get("is_submitted"))]
-
-            text = self._build_message(unfinished, to_notify, limit)
-
-            updated = cache_module.update_cache(cache, homeworks)
-            cache_module.save_cache(updated, config.CACHE_FILE)
-
-            return text
-
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._do_check_homeworks, limit)
         except Exception as e:
             logger.error(f"[智慧树] 检查作业异常: {e}")
             return f"❌ 检查作业时出错: {str(e)[:200]}"
