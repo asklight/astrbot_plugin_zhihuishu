@@ -56,6 +56,12 @@ def update_cache(cache: dict, homeworks: list[dict]) -> dict:
     """更新缓存并清理过期数据。"""
     now = datetime.now()
 
+    # 记录当前未提交作业的 key，这些不应被清理
+    active_keys: set[str] = set()
+    for hw in homeworks:
+        if not hw.get("is_submitted"):
+            active_keys.add(f"hw_{hw.get('homework_id')}")
+
     for hw in homeworks:
         key = f"hw_{hw.get('homework_id')}"
         end_time = hw.get("end_time")
@@ -75,6 +81,9 @@ def update_cache(cache: dict, homeworks: list[dict]) -> dict:
     remove_keys: list[str] = []
 
     for key, value in cache.items():
+        # 仍处于未提交状态的作业，无论截止日期多早都不清理
+        if key in active_keys:
+            continue
         try:
             end_dt = datetime.fromisoformat(str(value.get("end_time")))
             if end_dt < expire_before:
